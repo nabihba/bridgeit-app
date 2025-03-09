@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Button, Alert, Image, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { account, database } from '../services/appwrite';
+import { account, database, Query } from '../services/appwrite'; // Import Query
 
 const Login = () => {
   const router = useRouter();
@@ -36,15 +36,15 @@ const Login = () => {
   
       // 3️⃣ Check if user is an employer or jobseeker
       const employerResponse = await database.listDocuments(
-        '67bc33790033a3d1dfb7',
-        '67cc46680012c093478f',
-        [`equal("userId", "${userId}")`]
+        '67bc33790033a3d1dfb7', // Database ID
+        '67cc46680012c093478f', // Employer Collection ID
+        [Query.equal('userId', userId)] // Correct query syntax
       );
   
       const jobseekerResponse = await database.listDocuments(
-        '67bc33790033a3d1dfb7',
-        '67bc338c00003b000562',
-        [`equal("userId", "${userId}")`]
+        '67bc33790033a3d1dfb7', // Database ID
+        '67bc338c00003b000562', // Jobseeker Collection ID
+        [Query.equal('userId', userId)] // Correct query syntax
       );
   
       if (jobseekerResponse.documents.length > 0) {

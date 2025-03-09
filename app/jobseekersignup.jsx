@@ -48,7 +48,7 @@ const JobseekerSignup = () => {
       );
 
       Alert.alert('Signup successful! Redirecting...');
-      router.push('/login'); // Redirect to login
+      router.push('/jobseekerhome'); // Redirect to login
 
     } catch (error) {
       console.error('Signup Error:', error);

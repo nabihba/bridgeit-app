@@ -46,7 +46,7 @@ const signup = () => {
       );
 
       Alert.alert('Signup successful! Redirecting...');
-      router.push('/login'); // Redirect to login page
+      router.push('/employerhomescreen'); // Redirect to login page
 
     } catch (error) {
       console.error('Signup Error:', error);
