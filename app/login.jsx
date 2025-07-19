@@ -1,67 +1,124 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, Alert, StyleSheet } from 'react-native';
-import { account, database } from '../../services/appwrite';
+import { View, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
+import { TextInput, Button, Card, Text, useTheme, Provider as PaperProvider } from 'react-native-paper';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { auth, db } from '../services/firebase';
+import { useRouter } from 'expo-router';
+import Toast from 'react-native-toast-message';
+import { useUser } from '../components/UserContext';
 
-const Login = ({ navigation }) => {
+const green = '#217a3e';
+const gold = '#d4af37';
+
+const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const { setUser } = useUser();
+
+  const showToast = (type, message) => {
+    Toast.show({
+      type,
+      text1: message,
+      position: 'top',
+      visibilityTime: 2500,
+      topOffset: 60,
+    });
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert('Error', 'Please enter both email and password.');
+      showToast('error', 'Please enter both email and password.');
       return;
     }
-    
+    setLoading(true);
     try {
-      // Authenticate User
-      await account.createEmailSession(email, password);
-
-      // Get Logged-in User's ID
-      const user = await account.get();
-      console.log('User ID:', user.$id);
-
-      // Fetch User Data from Database
-      const userData = await database.getDocument(
-        '67bc33790033a3d1dfb7', // Database ID
-        '67bc338c00003b000562', // Collection ID
-        user.$id                // Document ID
-      );
-
-      console.log('User Data:', userData);
-      Alert.alert('Success', Welcome, ${userData.name}!);
-
-      // Navigate to Home Page
-      navigation.navigate('EmployerHome', { user: userData });
-    } catch (error) {
-      if (error.code === 401) {
-        Alert.alert('Error', 'Invalid email or password.');
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+      // Jobseeker check
+      const jobseekerQuery = query(collection(db, 'jobseekers'), where('userId', '==', user.uid));
+      const jobseekerSnapshot = await getDocs(jobseekerQuery);
+      // Company check
+      const companyQuery = query(collection(db, 'companies'), where('userId', '==', user.uid));
+      const companySnapshot = await getDocs(companyQuery);
+      if (!jobseekerSnapshot.empty) {
+        const jobseeker = jobseekerSnapshot.docs[0].data();
+        setUser({ uid: user.uid, type: 'jobseeker', profile: { ...jobseeker, userId: user.uid, email: user.email } });
+        showToast('success', `Welcome, ${jobseeker.name}!`);
+        setTimeout(() => router.push('/jobseekerhome'), 1000);
+      } else if (!companySnapshot.empty) {
+        const company = companySnapshot.docs[0].data();
+        setUser({ uid: user.uid, type: 'employer', profile: { ...company, userId: user.uid, email: user.email } });
+        showToast('success', `Welcome, ${company.companyName}!`);
+        setTimeout(() => router.push('/employerhomescreen'), 1000);
       } else {
-        Alert.alert('Error', 'Something went wrong. Please try again.');
+        showToast('error', 'No matching user found.');
+      }
+    } catch (error) {
+      if (error.code === 'auth/wrong-password' || error.code === 'auth/user-not-found') {
+        showToast('error', 'Invalid email or password.');
+      } else {
+        showToast('error', 'Something went wrong. Please try again.');
       }
       console.error(error);
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Login</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        autoCapitalize="none"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-      <Button title="Login" onPress={handleLogin} />
-    </View>
+    <PaperProvider>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: green }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={styles.container}>
+          <Card style={styles.card}>
+            <Card.Title title="Login" titleStyle={{ color: green, fontWeight: 'bold', fontSize: 28 }} />
+            <Card.Content>
+              <TextInput
+                label="Email"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                style={styles.input}
+                mode="outlined"
+                outlineColor={gold}
+                activeOutlineColor={green}
+                textColor={green}
+                theme={{ colors: { text: green, primary: gold, placeholder: gold } }}
+              />
+              <TextInput
+                label="Password"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                style={styles.input}
+                mode="outlined"
+                outlineColor={gold}
+                activeOutlineColor={green}
+                textColor={green}
+                theme={{ colors: { text: green, primary: gold, placeholder: gold } }}
+              />
+              <Button
+                mode="contained"
+                onPress={handleLogin}
+                loading={loading}
+                style={styles.button}
+                contentStyle={{ backgroundColor: gold }}
+                labelStyle={{ color: green, fontWeight: 'bold', fontSize: 18 }}
+              >
+                Login
+              </Button>
+            </Card.Content>
+          </Card>
+        </View>
+        <Toast />
+      </KeyboardAvoidingView>
+    </PaperProvider>
   );
 };
 
@@ -69,20 +126,29 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
   },
-  title: {
-    fontSize: 24,
-    marginBottom: 20,
-    textAlign: 'center',
+  card: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 20,
+    elevation: 8,
+    backgroundColor: '#fff',
+    borderColor: gold,
+    borderWidth: 2,
   },
   input: {
-    height: 40,
-    borderColor: 'gray',
-    borderWidth: 1,
-    marginBottom: 15,
-    paddingHorizontal: 10,
-    borderRadius: 5,
+    marginBottom: 18,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+  },
+  button: {
+    marginTop: 10,
+    borderRadius: 10,
+    borderColor: gold,
+    borderWidth: 2,
+    backgroundColor: gold,
   },
 });
 

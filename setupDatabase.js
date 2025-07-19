@@ -1,3 +1,6 @@
+// DEPRECATED: This file is no longer used. Appwrite has been replaced by Firebase.
+// All code below is commented out for reference.
+/*
 import { Client, Databases } from 'appwrite';
 
 // Initialize Appwrite Client
@@ -31,3 +34,4 @@ async function createCompanyCollection() {
 }
 
 createCompanyCollection();
+*/
