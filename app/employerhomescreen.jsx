@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, FlatList, TouchableOpacity, Image, StyleSheet, ActivityIndicator, Menu } from 'react-native';
+import { View, FlatList, TouchableOpacity, Image, StyleSheet, ActivityIndicator } from 'react-native';
 import JobSeekerCard from '../components/jobseekercard';
 import FilterBar from '../components/Filterbar';
 import { useRouter } from 'expo-router';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../services/firebase';
-import { Appbar, Card, Text, Provider as PaperProvider } from 'react-native-paper';
+import { Appbar, Card, Text, Provider as PaperProvider, Button, Portal, Modal } from 'react-native-paper';
 import { useUser } from '../components/UserContext';
 import { signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
@@ -63,22 +63,18 @@ const EmployerHomeScreen = () => {
     router.replace('/');
   };
 
+  const handleProfile = () => {
+    setMenuVisible(false);
+    router.push({ pathname: '/profile', params: { ...user.profile, userId: user.uid } });
+  };
+
   return (
     <PaperProvider>
       <View style={styles.root}>
         <Appbar.Header style={{ backgroundColor: green }}>
           <Appbar.Content title="Employers Home" titleStyle={{ color: gold, fontWeight: 'bold', fontSize: 22 }} />
           {user && (
-            <Menu
-              visible={menuVisible}
-              onDismiss={() => setMenuVisible(false)}
-              anchor={
-                <Appbar.Action icon="account-circle" color={gold} onPress={() => setMenuVisible(true)} />
-              }
-            >
-              <Menu.Item onPress={() => router.push({ pathname: '/profile', params: { ...user.profile, userId: user.uid } })} title="Profile" />
-              <Menu.Item onPress={handleLogout} title="Logout" />
-            </Menu>
+            <Appbar.Action icon="account-circle" color={gold} onPress={() => setMenuVisible(true)} />
           )}
         </Appbar.Header>
         <View style={styles.container}>
@@ -104,6 +100,35 @@ const EmployerHomeScreen = () => {
             />
           )}
         </View>
+        
+        <Portal>
+          <Modal
+            visible={menuVisible}
+            onDismiss={() => setMenuVisible(false)}
+            contentContainerStyle={styles.modalContainer}
+          >
+            <Card style={styles.menuCard}>
+              <Card.Content>
+                <Button 
+                  mode="text" 
+                  onPress={handleProfile}
+                  style={styles.menuButton}
+                  labelStyle={{ color: green, fontSize: 16 }}
+                >
+                  Profile
+                </Button>
+                <Button 
+                  mode="text" 
+                  onPress={handleLogout}
+                  style={styles.menuButton}
+                  labelStyle={{ color: green, fontSize: 16 }}
+                >
+                  Logout
+                </Button>
+              </Card.Content>
+            </Card>
+          </Modal>
+        </Portal>
       </View>
       <Toast />
     </PaperProvider>
@@ -151,6 +176,22 @@ const styles = StyleSheet.create({
     fontSize: 18,
     textAlign: 'center',
     marginTop: 40,
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    alignItems: 'flex-end',
+    paddingTop: 60,
+    paddingRight: 20,
+  },
+  menuCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    elevation: 8,
+    minWidth: 150,
+  },
+  menuButton: {
+    marginVertical: 4,
   },
 });
 

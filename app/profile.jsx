@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Appbar, Card, Text, TextInput, Button, Provider as PaperProvider, ActivityIndicator } from 'react-native-paper';
+import { Appbar, Card, Text, TextInput, Button, Provider as PaperProvider, ActivityIndicator, Avatar } from 'react-native-paper';
 import { db } from '../services/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
+import * as ImagePicker from 'expo-image-picker';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const green = '#217a3e';
 const gold = '#d4af37';
@@ -19,9 +21,11 @@ const ProfileScreen = () => {
     profession: params.profession || '',
     companyName: params.companyName || '',
     location: params.location || '',
+    photoURL: params.photoURL || '',
   });
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const handleChange = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -30,7 +34,6 @@ const ProfileScreen = () => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Determine collection and docId
       let collectionName = '';
       let docId = params.userId;
       if (form.companyName) {
@@ -39,13 +42,12 @@ const ProfileScreen = () => {
         collectionName = 'jobseekers';
       }
       if (!docId) throw new Error('User ID missing.');
-      const ref = doc(db, collectionName, docId);
-      // Only update editable fields
-      const updateData = { location: form.location };
+      const refDoc = doc(db, collectionName, docId);
+      const updateData = { location: form.location, photoURL: form.photoURL };
       if (form.name) updateData.name = form.name;
       if (form.profession) updateData.profession = form.profession;
       if (form.companyName) updateData.companyName = form.companyName;
-      await updateDoc(ref, updateData);
+      await updateDoc(refDoc, updateData);
       Toast.show({ type: 'success', text1: 'Profile updated!' });
       setEditing(false);
     } catch (err) {
@@ -55,6 +57,39 @@ const ProfileScreen = () => {
       setSaving(false);
     }
   };
+
+  const handlePickPhoto = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.7,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setUploading(true);
+        const asset = result.assets[0];
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        const storage = getStorage();
+        const ext = asset.uri.split('.').pop();
+        const storageRef = ref(storage, `profilePhotos/${params.userId}.${ext}`);
+        await uploadBytes(storageRef, blob);
+        const url = await getDownloadURL(storageRef);
+        setForm((prev) => ({ ...prev, photoURL: url }));
+        Toast.show({ type: 'success', text1: 'Photo uploaded!' });
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to upload photo.');
+      console.error(err);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const initials = form.name || form.companyName
+    ? (form.name || form.companyName).split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+    : 'U';
 
   return (
     <PaperProvider>
@@ -68,8 +103,24 @@ const ProfileScreen = () => {
         </Appbar.Header>
         <View style={styles.container}>
           <Card style={styles.card}>
-            <Card.Title title={form.name || form.companyName || 'User'} titleStyle={{ color: green, fontWeight: 'bold', fontSize: 24 }} />
-            <Card.Content>
+            <Card.Content style={{ alignItems: 'center' }}>
+              {form.photoURL ? (
+                <Avatar.Image size={90} source={{ uri: form.photoURL }} style={styles.avatar} />
+              ) : (
+                <Avatar.Text size={90} label={initials} style={styles.avatar} />
+              )}
+              {editing && (
+                <Button
+                  mode="outlined"
+                  style={styles.editPhotoButton}
+                  labelStyle={{ color: green, fontWeight: 'bold' }}
+                  onPress={handlePickPhoto}
+                  loading={uploading}
+                  disabled={uploading}
+                >
+                  Edit Photo
+                </Button>
+              )}
               <TextInput
                 label="Name"
                 value={form.name}
@@ -149,7 +200,7 @@ const ProfileScreen = () => {
             </Card.Content>
           </Card>
         </View>
-        {saving && (
+        {(saving || uploading) && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator animating={true} color={gold} size="large" />
           </View>
@@ -180,6 +231,17 @@ const styles = StyleSheet.create({
     borderColor: gold,
     borderWidth: 2,
     padding: 16,
+  },
+  avatar: {
+    marginBottom: 12,
+    backgroundColor: gold,
+  },
+  editPhotoButton: {
+    marginBottom: 16,
+    borderRadius: 10,
+    borderColor: gold,
+    borderWidth: 2,
+    backgroundColor: '#fff',
   },
   input: {
     marginBottom: 14,

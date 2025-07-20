@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, TextInput, Button } from 'react-native';
 
-const filterbar = ({ onApplyFilters }) => {
+const FilterBar = ({ onApplyFilters }) => {
   const [profession, setProfession] = useState('');
   const [experience, setExperience] = useState('');
 
@@ -14,4 +14,4 @@ const filterbar = ({ onApplyFilters }) => {
   );
 };
 
-export default filterbar;
+export default FilterBar;
