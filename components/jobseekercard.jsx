@@ -59,7 +59,6 @@ const JobSeekerCard = ({ seeker }) => {
           labelStyle={{ color: green, fontWeight: 'bold' }}
           onPress={startChat}
           loading={loading}
-          disabled={loading}
         >
           Message
         </Button>

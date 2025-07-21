@@ -2,6 +2,9 @@ import { Tabs } from 'expo-router';
 import { useUser } from '../../components/UserContext';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useColorScheme } from 'react-native';
+import { useEffect, useState } from 'react';
+import { db } from '../../services/firebase';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
 export default function TabLayout() {
   const { user } = useUser();
@@ -17,6 +20,26 @@ export default function TabLayout() {
     height: 60,
     paddingBottom: 6,
   };
+
+  // Unread badge logic
+  const [unreadCount, setUnreadCount] = useState(0);
+  useEffect(() => {
+    if (!user) return;
+    // Listen to all chats for this user
+    const q = query(collection(db, 'chats'), where('participants', 'array-contains', user.uid));
+    const unsub = onSnapshot(q, (snapshot) => {
+      let count = 0;
+      snapshot.docs.forEach(docSnap => {
+        const data = docSnap.data();
+        // If lastMessage exists and lastMessageSender !== user.uid and lastMessageReadBy doesn't include user.uid
+        if (data.lastMessage && data.lastMessageSender !== user.uid && (!data.lastMessageReadBy || !data.lastMessageReadBy.includes(user.uid))) {
+          count++;
+        }
+      });
+      setUnreadCount(count);
+    });
+    return () => unsub();
+  }, [user]);
 
   return (
     <Tabs
@@ -43,6 +66,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons name="message-text" color={color} size={size} />
           ),
+          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
         }}
       />
       <Tabs.Screen

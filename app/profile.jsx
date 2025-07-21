@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Alert } from 'react-native';
+import { View, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Appbar, Card, Text, TextInput, Button, Provider as PaperProvider, ActivityIndicator, Avatar } from 'react-native-paper';
+import { Card, Text, TextInput, Button, Provider as PaperProvider, ActivityIndicator, Avatar } from 'react-native-paper';
 import { db } from '../services/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import * as ImagePicker from 'expo-image-picker';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
-const green = '#217a3e';
-const gold = '#d4af37';
+const accent = '#1976d2';
 const bg = '#f7f7f7';
+const cardBg = '#fff';
+const textMain = '#222';
+const textSub = '#757575';
 
 const ProfileScreen = () => {
   const router = useRouter();
@@ -31,76 +33,55 @@ const ProfileScreen = () => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const handlePickPhoto = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.7 });
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setUploading(true);
+      try {
+        const asset = result.assets[0];
+        const storage = getStorage();
+        const storageRef = ref(storage, `profilePhotos/${Date.now()}_${asset.fileName || 'photo.jpg'}`);
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        await uploadBytes(storageRef, blob);
+        const url = await getDownloadURL(storageRef);
+        setForm((prev) => ({ ...prev, photoURL: url }));
+      } catch (err) {
+        Alert.alert('Upload failed', 'Could not upload photo.');
+      } finally {
+        setUploading(false);
+      }
+    }
+  };
+
   const handleSave = async () => {
     setSaving(true);
     try {
-      let collectionName = '';
-      let docId = params.userId;
-      if (form.companyName) {
-        collectionName = 'companies';
-      } else {
-        collectionName = 'jobseekers';
-      }
-      if (!docId) throw new Error('User ID missing.');
-      const refDoc = doc(db, collectionName, docId);
-      const updateData = { location: form.location, photoURL: form.photoURL };
-      if (form.name) updateData.name = form.name;
-      if (form.profession) updateData.profession = form.profession;
-      if (form.companyName) updateData.companyName = form.companyName;
-      await updateDoc(refDoc, updateData);
+      // Save to Firestore (jobseeker or company)
+      let collectionName = form.companyName ? 'companies' : 'jobseekers';
+      const refDoc = doc(db, collectionName, params.userId);
+      await updateDoc(refDoc, { ...form });
       Toast.show({ type: 'success', text1: 'Profile updated!' });
       setEditing(false);
     } catch (err) {
-      Toast.show({ type: 'error', text1: 'Failed to update profile.' });
-      console.error(err);
+      Alert.alert('Save failed', 'Could not save profile.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handlePickPhoto = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-      });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        setUploading(true);
-        const asset = result.assets[0];
-        const response = await fetch(asset.uri);
-        const blob = await response.blob();
-        const storage = getStorage();
-        const ext = asset.uri.split('.').pop();
-        const storageRef = ref(storage, `profilePhotos/${params.userId}.${ext}`);
-        await uploadBytes(storageRef, blob);
-        const url = await getDownloadURL(storageRef);
-        setForm((prev) => ({ ...prev, photoURL: url }));
-        Toast.show({ type: 'success', text1: 'Photo uploaded!' });
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Failed to upload photo.');
-      console.error(err);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const initials = form.name || form.companyName
-    ? (form.name || form.companyName).split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-    : 'U';
+  const initials = (form.name || form.companyName || 'U').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 
   return (
     <PaperProvider>
       <View style={styles.root}>
-        <Appbar.Header style={{ backgroundColor: green }}>
-          <Appbar.BackAction color={gold} onPress={() => router.back()} />
-          <Appbar.Content title="Profile" titleStyle={{ color: gold, fontWeight: 'bold', fontSize: 22 }} />
-          {editing ? null : (
-            <Appbar.Action icon="pencil" color={gold} onPress={() => setEditing(true)} />
-          )}
-        </Appbar.Header>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Avatar.Icon size={36} icon="arrow-left" color={accent} style={{ backgroundColor: '#e3eafc' }} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Profile</Text>
+          <View style={{ width: 36 }} />
+        </View>
         <View style={styles.container}>
           <Card style={styles.card}>
             <Card.Content style={{ alignItems: 'center' }}>
@@ -113,7 +94,7 @@ const ProfileScreen = () => {
                 <Button
                   mode="outlined"
                   style={styles.editPhotoButton}
-                  labelStyle={{ color: green, fontWeight: 'bold' }}
+                  labelStyle={{ color: accent, fontWeight: 'bold' }}
                   onPress={handlePickPhoto}
                   loading={uploading}
                   disabled={uploading}
@@ -127,49 +108,36 @@ const ProfileScreen = () => {
                 onChangeText={(v) => handleChange('name', v)}
                 style={styles.input}
                 mode="outlined"
-                outlineColor={gold}
-                activeOutlineColor={green}
-                textColor={green}
-                theme={{ colors: { text: green, primary: gold, placeholder: gold } }}
+                outlineColor={accent}
+                activeOutlineColor={accent}
+                textColor={textMain}
+                theme={{ colors: { text: textMain, primary: accent, placeholder: textSub } }}
                 editable={editing}
               />
-              <TextInput
-                label="Email"
-                value={form.email}
-                onChangeText={(v) => handleChange('email', v)}
-                style={styles.input}
-                mode="outlined"
-                outlineColor={gold}
-                activeOutlineColor={green}
-                textColor={green}
-                theme={{ colors: { text: green, primary: gold, placeholder: gold } }}
-                editable={false}
-              />
-              {form.profession !== undefined && (
-                <TextInput
-                  label="Profession"
-                  value={form.profession}
-                  onChangeText={(v) => handleChange('profession', v)}
-                  style={styles.input}
-                  mode="outlined"
-                  outlineColor={gold}
-                  activeOutlineColor={green}
-                  textColor={green}
-                  theme={{ colors: { text: green, primary: gold, placeholder: gold } }}
-                  editable={editing}
-                />
-              )}
-              {form.companyName !== undefined && (
+              {form.companyName ? (
                 <TextInput
                   label="Company Name"
                   value={form.companyName}
                   onChangeText={(v) => handleChange('companyName', v)}
                   style={styles.input}
                   mode="outlined"
-                  outlineColor={gold}
-                  activeOutlineColor={green}
-                  textColor={green}
-                  theme={{ colors: { text: green, primary: gold, placeholder: gold } }}
+                  outlineColor={accent}
+                  activeOutlineColor={accent}
+                  textColor={textMain}
+                  theme={{ colors: { text: textMain, primary: accent, placeholder: textSub } }}
+                  editable={editing}
+                />
+              ) : (
+                <TextInput
+                  label="Profession"
+                  value={form.profession}
+                  onChangeText={(v) => handleChange('profession', v)}
+                  style={styles.input}
+                  mode="outlined"
+                  outlineColor={accent}
+                  activeOutlineColor={accent}
+                  textColor={textMain}
+                  theme={{ colors: { text: textMain, primary: accent, placeholder: textSub } }}
                   editable={editing}
                 />
               )}
@@ -179,34 +147,51 @@ const ProfileScreen = () => {
                 onChangeText={(v) => handleChange('location', v)}
                 style={styles.input}
                 mode="outlined"
-                outlineColor={gold}
-                activeOutlineColor={green}
-                textColor={green}
-                theme={{ colors: { text: green, primary: gold, placeholder: gold } }}
+                outlineColor={accent}
+                activeOutlineColor={accent}
+                textColor={textMain}
+                theme={{ colors: { text: textMain, primary: accent, placeholder: textSub } }}
                 editable={editing}
               />
-              {editing && (
+              <TextInput
+                label="Email"
+                value={form.email}
+                onChangeText={(v) => handleChange('email', v)}
+                style={styles.input}
+                mode="outlined"
+                outlineColor={accent}
+                activeOutlineColor={accent}
+                textColor={textMain}
+                theme={{ colors: { text: textMain, primary: accent, placeholder: textSub } }}
+                editable={false}
+              />
+              {editing ? (
                 <Button
                   mode="contained"
-                  style={styles.button}
-                  contentStyle={{ backgroundColor: gold }}
-                  labelStyle={{ color: green, fontWeight: 'bold', fontSize: 18 }}
+                  style={styles.saveButton}
+                  contentStyle={{ backgroundColor: accent }}
+                  labelStyle={{ color: '#fff', fontWeight: 'bold' }}
                   onPress={handleSave}
                   loading={saving}
+                  disabled={saving}
                 >
                   Save
+                </Button>
+              ) : (
+                <Button
+                  mode="outlined"
+                  style={styles.editButton}
+                  labelStyle={{ color: accent, fontWeight: 'bold' }}
+                  onPress={() => setEditing(true)}
+                >
+                  Edit Profile
                 </Button>
               )}
             </Card.Content>
           </Card>
         </View>
-        {(saving || uploading) && (
-          <View style={styles.loadingOverlay}>
-            <ActivityIndicator animating={true} color={gold} size="large" />
-          </View>
-        )}
-        <Toast />
       </View>
+      <Toast />
     </PaperProvider>
   );
 };
@@ -216,51 +201,62 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: bg,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 8,
+    backgroundColor: cardBg,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    elevation: 2,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: accent,
+  },
   container: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
+    padding: 16,
   },
   card: {
     width: '100%',
-    maxWidth: 420,
+    maxWidth: 400,
     borderRadius: 20,
     elevation: 8,
-    backgroundColor: '#fff',
-    borderColor: gold,
+    backgroundColor: cardBg,
+    borderColor: accent,
     borderWidth: 2,
     padding: 16,
   },
   avatar: {
     marginBottom: 12,
-    backgroundColor: gold,
-  },
-  editPhotoButton: {
-    marginBottom: 16,
-    borderRadius: 10,
-    borderColor: gold,
-    borderWidth: 2,
-    backgroundColor: '#fff',
+    backgroundColor: '#e3eafc',
   },
   input: {
-    marginBottom: 14,
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    marginBottom: 12,
+    backgroundColor: cardBg,
   },
-  button: {
-    marginTop: 16,
-    borderRadius: 10,
-    borderColor: gold,
-    borderWidth: 2,
-    backgroundColor: gold,
+  editPhotoButton: {
+    marginBottom: 12,
+    borderColor: accent,
+    borderWidth: 1,
+    borderRadius: 8,
   },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
+  saveButton: {
+    marginTop: 8,
+    borderRadius: 10,
+    backgroundColor: accent,
+  },
+  editButton: {
+    marginTop: 8,
+    borderRadius: 10,
+    borderColor: accent,
+    borderWidth: 1,
   },
 });
 

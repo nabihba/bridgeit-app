@@ -1,13 +1,22 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Linking } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
-import { Appbar, Card, Text, Provider as PaperProvider } from 'react-native-paper';
+import { Appbar, Card, Text, Provider as PaperProvider, Button } from 'react-native-paper';
 
 const green = '#217a3e';
 const gold = '#d4af37';
 
+const openUrl = (url) => {
+  if (!url) return;
+  let fixedUrl = url.trim();
+  if (!/^https?:\/\//i.test(fixedUrl)) {
+    fixedUrl = 'https://' + fixedUrl;
+  }
+  Linking.openURL(fixedUrl);
+};
+
 const JobSeekerDetailsPage = () => {
-  const { name, profession, experienceYears, funFact } = useLocalSearchParams();
+  const { name, profession, experienceYears, funFact, website, socialLinks } = useLocalSearchParams();
 
   return (
     <PaperProvider>
@@ -25,6 +34,25 @@ const JobSeekerDetailsPage = () => {
               <Text style={styles.value}>{experienceYears} years</Text>
               <Text style={styles.label}>Fun Fact:</Text>
               <Text style={styles.value}>{funFact}</Text>
+              {website && (
+                <Button
+                  mode="outlined"
+                  onPress={() => openUrl(website)}
+                  style={{ marginTop: 8 }}
+                >
+                  Visit Website
+                </Button>
+              )}
+              {socialLinks && socialLinks.split(',').map((link, idx) => (
+                <Button
+                  key={idx}
+                  mode="outlined"
+                  onPress={() => openUrl(link)}
+                  style={{ marginTop: 8 }}
+                >
+                  {link.trim()}
+                </Button>
+              ))}
             </Card.Content>
           </Card>
         </View>

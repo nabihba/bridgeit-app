@@ -52,17 +52,19 @@ const EmployerCard = ({ companyName, industry, location, userId }) => {
         <Text style={styles.companyName}>{companyName}</Text>
         <Text style={styles.industry}>{industry}</Text>
         <Text style={styles.location}>{location}</Text>
-        <Button
-          mode="contained"
-          style={styles.button}
-          contentStyle={{ backgroundColor: gold }}
-          labelStyle={{ color: green, fontWeight: 'bold' }}
-          onPress={startChat}
-          loading={loading}
-          disabled={loading}
-        >
-          Message
-        </Button>
+        {user && user.type === 'jobseeker' && user.uid !== userId && (
+          <Button
+            mode="contained"
+            style={styles.button}
+            contentStyle={{ backgroundColor: gold }}
+            labelStyle={{ color: green, fontWeight: 'bold' }}
+            onPress={startChat}
+            loading={loading}
+            disabled={loading}
+          >
+            Message
+          </Button>
+        )}
       </Card.Content>
     </Card>
   );

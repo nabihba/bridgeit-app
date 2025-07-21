@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
 import { TextInput, Button, Card, Text, Provider as PaperProvider, ActivityIndicator } from 'react-native-paper';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useUser } from '../components/UserContext';
 import { db, auth } from '../services/firebase';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import Toast from 'react-native-toast-message';
 import { RecaptchaVerifier, signInWithPhoneNumber } from 'firebase/auth';
 
@@ -12,27 +13,57 @@ const gold = '#d4af37';
 const bg = '#f7f7f7';
 
 const PhoneVerification = () => {
-  const { user } = useUser();
-  const [phone, setPhone] = useState(user?.profile?.phone || '');
+  const router = useRouter();
+  const { userId, role, phone: initialPhone } = useLocalSearchParams();
+  const { setUser } = useUser();
+  const [phone, setPhone] = useState(initialPhone || '');
   const [code, setCode] = useState('');
   const [step, setStep] = useState('enterPhone'); // 'enterPhone' | 'enterCode' | 'verified'
   const [loading, setLoading] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
+  const [redirecting, setRedirecting] = useState(false);
 
-  // Setup reCAPTCHA verifier (web fallback)
-  let recaptchaVerifier;
-  if (typeof window !== 'undefined' && !window.recaptchaVerifier) {
-    window.recaptchaVerifier = new RecaptchaVerifier('recaptcha-container', {
-      size: 'invisible',
-      callback: () => {},
-    }, auth);
-  }
-  recaptchaVerifier = window.recaptchaVerifier;
+  const recaptchaContainerId = 'recaptcha-container';
+
+  useEffect(() => {
+    // Only run on web, not on native
+    if (
+      typeof window !== 'undefined' &&
+      typeof document !== 'undefined' &&
+      Platform.OS === 'web' &&
+      auth
+    ) {
+      try {
+        if (!window.recaptchaVerifier) {
+          window.recaptchaVerifier = new RecaptchaVerifier(
+            recaptchaContainerId,
+            {
+              size: 'invisible',
+              callback: (response) => {
+                // reCAPTCHA solved
+              },
+            },
+            auth
+          );
+        }
+      } catch (err) {
+        console.error('RecaptchaVerifier init error:', err);
+      }
+    }
+  }, []);
 
   const sendCode = async () => {
     setLoading(true);
     try {
-      const confirmationResult = await signInWithPhoneNumber(auth, phone, recaptchaVerifier);
+      let verifier = undefined;
+      if (Platform.OS === 'web') {
+        verifier = window.recaptchaVerifier;
+        if (!verifier) throw new Error('reCAPTCHA not initialized');
+      } else {
+        // Native: implement native verifier if needed
+        throw new Error('Phone verification is only supported on web in this build.');
+      }
+      const confirmationResult = await signInWithPhoneNumber(auth, phone, verifier);
       setConfirmation(confirmationResult);
       setStep('enterCode');
       Toast.show({ type: 'success', text1: 'Verification code sent!' });
@@ -49,8 +80,8 @@ const PhoneVerification = () => {
     try {
       await confirmation.confirm(code);
       // Mark phone as verified in Firestore
-      const collectionName = user.type === 'employer' ? 'companies' : 'jobseekers';
-      const ref = doc(db, collectionName, user.uid);
+      const collectionName = role === 'employer' ? 'companies' : 'jobseekers';
+      const ref = doc(db, collectionName, userId);
       await updateDoc(ref, { phone, phoneVerified: true });
       Toast.show({ type: 'success', text1: 'Phone verified!' });
       setStep('verified');
@@ -61,6 +92,52 @@ const PhoneVerification = () => {
       setLoading(false);
     }
   };
+
+  const handleVerificationSuccess = async () => {
+    // Mark user as verified in Firestore
+    const collectionName = role === 'employer' ? 'companies' : 'jobseekers';
+    const refDoc = doc(db, collectionName, userId);
+    await updateDoc(refDoc, { verified: true });
+    // Fetch user profile
+    const snap = await getDoc(refDoc);
+    const profile = snap.data();
+    setUser({ uid: userId, type: role, profile });
+    Toast.show({ type: 'success', text1: 'Phone verified!' });
+    goHome();
+  };
+
+  const goHome = () => {
+    setRedirecting(true);
+    setTimeout(() => {
+      if (role === 'jobseeker') {
+        router.replace('/jobseekerhome');
+      } else {
+        router.replace('/employerhomescreen');
+      }
+    }, 1500);
+  };
+
+  // On mount, check if already verified
+  useEffect(() => {
+    const checkVerified = async () => {
+      if (!userId || !role) return;
+      const collectionName = role === 'employer' ? 'companies' : 'jobseekers';
+      const refDoc = doc(db, collectionName, userId);
+      const snap = await getDoc(refDoc);
+      if (snap.exists() && snap.data().verified) {
+        setUser({ uid: userId, type: role, profile: snap.data() });
+        router.replace('/');
+      }
+    };
+    checkVerified();
+  }, [userId, role]);
+
+  const isRecaptchaReady = () => {
+    if (Platform.OS !== 'web') return true;
+    return typeof window !== 'undefined' && !!window.recaptchaVerifier;
+  };
+
+  const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
 
   return (
     <PaperProvider>
@@ -88,10 +165,16 @@ const PhoneVerification = () => {
                   contentStyle={{ backgroundColor: gold }}
                   labelStyle={{ color: green, fontWeight: 'bold', fontSize: 18 }}
                   onPress={sendCode}
-                  disabled={loading || !phone}
+                  loading={loading}
+                  disabled={!isRecaptchaReady() || loading || !phone}
                 >
                   Send Code
                 </Button>
+                {Platform.OS === 'web' && !isRecaptchaReady() && (
+                  <Text style={{ color: 'red', marginTop: 8 }}>
+                    reCAPTCHA failed to initialize. Please refresh the page or check your network.
+                  </Text>
+                )}
               </>
             )}
             {step === 'enterCode' && (
@@ -125,9 +208,36 @@ const PhoneVerification = () => {
                 Your phone is verified!
               </Text>
             )}
+            {isLocalhost && (
+              <Button
+                mode="outlined"
+                style={{ marginTop: 16, borderColor: 'green' }}
+                labelStyle={{ color: 'green', fontWeight: 'bold' }}
+                onPress={async () => {
+                  // Mark user as verified in Firestore
+                  const collectionName = role === 'employer' ? 'companies' : 'jobseekers';
+                  const refDoc = doc(db, collectionName, userId);
+                  await setDoc(refDoc, { verified: true }, { merge: true });
+                  // Fetch user profile
+                  const snap = await getDoc(refDoc);
+                  const profile = snap.data();
+                  setUser({ uid: userId, type: role, profile });
+                  Toast.show({ type: 'success', text1: 'Bypassed phone verification (dev mode)' });
+                  goHome();
+                }}
+              >
+                Bypass Verification (Dev Only)
+              </Button>
+            )}
+            {redirecting && (
+              <View style={{ alignItems: 'center', marginTop: 24 }}>
+                <ActivityIndicator animating={true} color={gold} size="large" />
+                <Text style={{ marginTop: 8, color: gold }}>Redirecting...</Text>
+              </View>
+            )}
           </Card.Content>
         </Card>
-        <div id="recaptcha-container" />
+        {typeof window !== 'undefined' && <div id="recaptcha-container"></div>}
         {loading && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator animating={true} color={gold} size="large" />

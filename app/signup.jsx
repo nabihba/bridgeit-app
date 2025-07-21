@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { TextInput, Button, Card, Text, Provider as PaperProvider, ActivityIndicator } from 'react-native-paper';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, setDoc, doc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import Toast from 'react-native-toast-message';
 
@@ -52,19 +52,17 @@ const signup = () => {
       const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.password);
       const user = userCredential.user;
       // 2️⃣ Store Company Data in Firestore
-      await addDoc(collection(db, 'companies'), {
-          companyName: form.companyName,
-          industry: form.industry,
-          size: parseInt(form.size) || 0, 
-          website: form.website,
-          description: form.description,
-          contactPerson: form.contactPerson,
-          location: form.location,
-          socialLinks: form.socialLinks,
-        userId: user.uid, // Use the Firebase user ID
+      // Create Firestore doc with UID as ID
+      await setDoc(doc(db, 'companies', user.uid), {
+        ...form,
+        userId: user.uid,
+        email: form.email,
+        verified: true,
       });
+      // setUser({ uid: user.uid, type: 'employer', profile: { ...form, userId: user.uid, email: form.email, verified: true } });
       showToast('success', 'Signup successful! Redirecting...');
       setTimeout(() => router.push('/employerhomescreen'), 1000);
+      // Do not setUser here; wait until phone is verified
     } catch (error) {
       if (error.code === 'auth/email-already-in-use') {
         showToast('error', 'This email is already registered. Please log in or use a different email.');
@@ -100,7 +98,7 @@ const signup = () => {
               <Button mode="contained" onPress={handleSignup} loading={loading} style={styles.button} contentStyle={{ backgroundColor: gold }} labelStyle={{ color: green, fontWeight: 'bold', fontSize: 18 }}>Sign Up</Button>
             </Card.Content>
           </Card>
-        </ScrollView>
+    </ScrollView>
         {loading && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator animating={true} color={gold} size="large" />

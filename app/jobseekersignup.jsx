@@ -3,9 +3,11 @@ import { View, StyleSheet, KeyboardAvoidingView, Platform, ScrollView } from 're
 import { TextInput, Button, Card, Text, Provider as PaperProvider, ActivityIndicator } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, setDoc, doc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import Toast from 'react-native-toast-message';
+import * as DocumentPicker from 'expo-document-picker';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const green = '#217a3e';
 const gold = '#d4af37';
@@ -23,6 +25,8 @@ const JobseekerSignup = () => {
     location: '',
   });
   const [loading, setLoading] = useState(false);
+  const [cvFile, setCvFile] = useState(null);
+  const [cvUploading, setCvUploading] = useState(false);
 
   const showToast = (type, message) => {
     Toast.show({
@@ -38,6 +42,20 @@ const JobseekerSignup = () => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  const pickCV = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setCvFile(result.assets[0]);
+      }
+    } catch (err) {
+      showToast('error', 'Failed to pick CV file.');
+    }
+  };
+
   const handleSignup = async () => {
     // Validate required fields
     if (!form.email || !form.password || !form.name || !form.profession || !form.experienceYears || !form.funFact || !form.skills || !form.location) {
@@ -49,16 +67,34 @@ const JobseekerSignup = () => {
       // 2️⃣ Create User Account in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, form.email, form.password);
       const user = userCredential.user;
+      let cvUrl = '';
+      if (cvFile) {
+        setCvUploading(true);
+        try {
+          const storage = getStorage();
+          const ext = cvFile.name.split('.').pop();
+          const storageRef = ref(storage, `cvs/${user.uid}.${ext}`);
+          const response = await fetch(cvFile.uri);
+          const blob = await response.blob();
+          await uploadBytes(storageRef, blob);
+          cvUrl = await getDownloadURL(storageRef);
+        } catch (err) {
+          showToast('error', 'Failed to upload CV.');
+          setCvUploading(false);
+          return;
+        }
+        setCvUploading(false);
+      }
       // 3️⃣ Store Jobseeker Data in Firestore
-      await addDoc(collection(db, 'jobseekers'), {
-        name: form.name,
-        profession: form.profession,
-        experienceYears: parseFloat(form.experienceYears) || 0,
-        funFact: form.funFact,
-        skills: form.skills.split(',').map(skill => skill.trim()),
-        location: form.location,
+      // Create Firestore doc with UID as ID
+      await setDoc(doc(db, 'jobseekers', user.uid), {
+        ...form,
         userId: user.uid,
+        email: form.email,
+        verified: true,
+        cvUrl,
       });
+      // setUser({ uid: user.uid, type: 'jobseeker', profile: { ...form, userId: user.uid, email: form.email, verified: true, cvUrl } }); // This line was removed as per the edit hint
       showToast('success', 'Signup successful! Redirecting...');
       setTimeout(() => router.push('/jobseekerhome'), 1000);
     } catch (error) {
@@ -91,6 +127,18 @@ const JobseekerSignup = () => {
               <TextInput label="Fun Fact About You" value={form.funFact} onChangeText={(v) => handleChange('funFact', v)} style={styles.input} mode="outlined" outlineColor={gold} activeOutlineColor={green} textColor={green} theme={{ colors: { text: green, primary: gold, placeholder: gold } }} />
               <TextInput label="Skills (comma-separated)" value={form.skills} onChangeText={(v) => handleChange('skills', v)} style={styles.input} mode="outlined" outlineColor={gold} activeOutlineColor={green} textColor={green} theme={{ colors: { text: green, primary: gold, placeholder: gold } }} />
               <TextInput label="Location" value={form.location} onChangeText={(v) => handleChange('location', v)} style={styles.input} mode="outlined" outlineColor={gold} activeOutlineColor={green} textColor={green} theme={{ colors: { text: green, primary: gold, placeholder: gold } }} />
+              <Button
+                mode="outlined"
+                onPress={pickCV}
+                style={{ marginBottom: 8 }}
+                loading={cvUploading}
+                disabled={cvUploading}
+              >
+                {cvFile ? 'Change CV' : 'Upload CV (PDF/DOC)'}
+              </Button>
+              {cvFile && (
+                <Text style={{ marginBottom: 8, color: 'green' }}>{cvFile.name}</Text>
+              )}
               <Button mode="contained" onPress={handleSignup} loading={loading} style={styles.button} contentStyle={{ backgroundColor: gold }} labelStyle={{ color: green, fontWeight: 'bold', fontSize: 18 }}>Sign Up</Button>
             </Card.Content>
           </Card>

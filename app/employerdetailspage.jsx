@@ -7,6 +7,15 @@ const green = '#217a3e';
 const gold = '#d4af37';
 const bg = '#f7f7f7';
 
+const openUrl = (url) => {
+  if (!url) return;
+  let fixedUrl = url.trim();
+  if (!/^https?:\/\//i.test(fixedUrl)) {
+    fixedUrl = 'https://' + fixedUrl;
+  }
+  Linking.openURL(fixedUrl);
+};
+
 const EmployerDetailPage = () => {
   const {
     companyName,
@@ -42,23 +51,22 @@ const EmployerDetailPage = () => {
               {website ? (
                 <Button
                   mode="outlined"
-                  style={styles.linkButton}
-                  labelStyle={{ color: green, fontWeight: 'bold' }}
-                  onPress={() => Linking.openURL(website)}
+                  onPress={() => openUrl(website)}
+                  style={{ marginTop: 8 }}
                 >
                   Visit Website
                 </Button>
               ) : null}
-              {socialLinks ? (
+              {socialLinks && socialLinks.split(',').map((link, idx) => (
                 <Button
+                  key={idx}
                   mode="outlined"
-                  style={styles.linkButton}
-                  labelStyle={{ color: gold, fontWeight: 'bold' }}
-                  onPress={() => Linking.openURL(socialLinks)}
+                  onPress={() => openUrl(link)}
+                  style={{ marginTop: 8 }}
                 >
-                  Social Media
+                  {link.trim()}
                 </Button>
-              ) : null}
+              ))}
             </Card.Content>
           </Card>
         </View>

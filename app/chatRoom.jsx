@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform } from 'react-native';
-import { Appbar, Card, Text, TextInput, Button, Provider as PaperProvider, ActivityIndicator, Divider, Avatar } from 'react-native-paper';
+import { View, StyleSheet, FlatList, KeyboardAvoidingView, Platform, TouchableOpacity } from 'react-native';
+import { Card, Text, TextInput, Button, Provider as PaperProvider, ActivityIndicator, Divider, Avatar } from 'react-native-paper';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { db } from '../services/firebase';
 import { collection, addDoc, query, orderBy, onSnapshot, serverTimestamp, doc, getDoc } from 'firebase/firestore';
@@ -11,9 +11,11 @@ import isYesterday from 'dayjs/plugin/isYesterday';
 dayjs.extend(isToday);
 dayjs.extend(isYesterday);
 
-const green = '#217a3e';
-const gold = '#d4af37';
+const accent = '#1976d2';
 const bg = '#f7f7f7';
+const cardBg = '#fff';
+const textMain = '#222';
+const textSub = '#757575';
 
 function groupMessagesByDay(messages) {
   const groups = [];
@@ -45,53 +47,69 @@ const ChatRoom = () => {
 
   useEffect(() => {
     if (!chatId) return;
-    const q = query(
-      collection(db, 'chats', chatId, 'messages'),
-      orderBy('timestamp', 'asc')
-    );
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
+    const q = query(collection(db, 'chats', chatId, 'messages'), orderBy('timestamp'));
+    const unsub = onSnapshot(q, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setMessages(msgs);
       setLoading(false);
-      // Fetch avatars for all unique senderIds
-      const uniqueIds = Array.from(new Set(msgs.map(m => m.senderId)));
-      const newAvatars = { ...avatarCache };
-      for (const uid of uniqueIds) {
-        if (!newAvatars[uid]) {
-          // Try jobseekers first, then companies
-          let profileDoc = await getDoc(doc(db, 'jobseekers', uid));
-          if (!profileDoc.exists()) {
-            profileDoc = await getDoc(doc(db, 'companies', uid));
+    });
+    return () => unsub();
+  }, [chatId]);
+
+  useEffect(() => {
+    // Fetch avatars for chat participants
+    const fetchAvatars = async () => {
+      if (!user || !chatId) return;
+      const chatDoc = await getDoc(doc(db, 'chats', chatId));
+      if (!chatDoc.exists()) return;
+      const chat = chatDoc.data();
+      const ids = chat.participants.filter(id => id !== user.uid);
+      const newAvatars = {};
+      for (const id of ids) {
+        if (avatarCache[id]) {
+          newAvatars[id] = avatarCache[id];
+        } else {
+          // Try jobseekers first
+          let ref = doc(db, 'jobseekers', id);
+          let snap = await getDoc(ref);
+          if (!snap.exists()) {
+            ref = doc(db, 'companies', id);
+            snap = await getDoc(ref);
           }
-          if (profileDoc.exists()) {
-            const data = profileDoc.data();
-            newAvatars[uid] = data.photoURL || null;
-            avatarCache[uid] = data.photoURL || null;
-          } else {
-            newAvatars[uid] = null;
-            avatarCache[uid] = null;
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.photoURL) {
+              avatarCache[id] = data.photoURL;
+              newAvatars[id] = data.photoURL;
+            }
           }
         }
       }
-      setAvatars({ ...newAvatars });
-      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
-    });
-    return unsubscribe;
-  }, [chatId]);
+      setAvatars(newAvatars);
+    };
+    fetchAvatars();
+  }, [chatId, user]);
+
+  const grouped = groupMessagesByDay(messages);
 
   const sendMessage = async () => {
-    if (!text.trim() || !user) return;
+    if (!text.trim()) return;
     setSending(true);
     try {
       await addDoc(collection(db, 'chats', chatId, 'messages'), {
-        senderId: user.uid,
-        senderName: user.profile.name || user.profile.companyName || 'User',
+        sender: user.uid,
         text: text.trim(),
         timestamp: serverTimestamp(),
       });
+      // Update last message in chat
+      await addDoc(collection(db, 'chats', chatId, 'meta'), {
+        lastMessage: text.trim(),
+        lastMessageAt: serverTimestamp(),
+      });
       setText('');
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 100);
     } catch (err) {
-      console.error(err);
+      // handle error
     } finally {
       setSending(false);
     }
@@ -99,41 +117,30 @@ const ChatRoom = () => {
 
   const renderItem = ({ item }) => {
     if (item.type === 'header') {
-      let label = '';
-      if (item.date) {
-        if (dayjs(item.date).isToday()) label = 'Today';
-        else if (dayjs(item.date).isYesterday()) label = 'Yesterday';
-        else label = dayjs(item.date).format('MMMM D, YYYY');
-      } else {
-        label = 'Unknown';
-      }
-      return (
-        <View style={styles.headerRow}>
-          <Divider style={{ marginVertical: 8 }} />
-          <Text style={styles.headerText}>{label}</Text>
-        </View>
-      );
+      let label = dayjs(item.date).isToday() ? 'Today' : dayjs(item.date).isYesterday() ? 'Yesterday' : dayjs(item.date).format('MMM D, YYYY');
+      return <Text style={styles.dayHeader}>{label}</Text>;
     }
-    // Message
-    const date = item.timestamp?.toDate ? item.timestamp.toDate() : null;
-    const time = date ? dayjs(date).format('h:mm A') : '';
-    const avatarUrl = avatars[item.senderId];
-    const initials = item.senderName ? item.senderName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2) : 'U';
+    const isMe = item.sender === user.uid;
+    const avatarUrl = isMe ? user.profile?.photoURL : avatars[item.sender];
+    const initials = isMe
+      ? (user.profile?.name || user.profile?.companyName || 'U').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+      : (item.senderName || 'U').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
     return (
-      <View style={[styles.messageRow, item.senderId === user.uid ? styles.myRow : styles.theirRow]}>
-        {item.senderId !== user.uid && (
+      <View style={[styles.messageRow, isMe ? styles.messageRowMe : styles.messageRowOther]}>
+        {!isMe && (
           avatarUrl ? (
             <Avatar.Image size={36} source={{ uri: avatarUrl }} style={styles.avatar} />
           ) : (
             <Avatar.Text size={36} label={initials} style={styles.avatar} />
           )
         )}
-        <View style={[styles.messageBubble, item.senderId === user.uid ? styles.myMessage : styles.theirMessage]}>
-          <Text style={styles.sender}>{item.senderName}</Text>
-          <Text style={styles.messageText}>{item.text}</Text>
-          <Text style={styles.timestamp}>{time}</Text>
-        </View>
-        {item.senderId === user.uid && (
+        <Card style={[styles.messageCard, isMe ? styles.messageMe : styles.messageOther]}>
+          <Card.Content>
+            <Text style={styles.messageText}>{item.text}</Text>
+            <Text style={styles.timestamp}>{item.timestamp?.toDate ? dayjs(item.timestamp.toDate()).format('h:mm A') : ''}</Text>
+          </Card.Content>
+        </Card>
+        {isMe && (
           avatarUrl ? (
             <Avatar.Image size={36} source={{ uri: avatarUrl }} style={styles.avatar} />
           ) : (
@@ -144,8 +151,6 @@ const ChatRoom = () => {
     );
   };
 
-  const grouped = groupMessagesByDay(messages);
-
   return (
     <PaperProvider>
       <KeyboardAvoidingView
@@ -153,13 +158,22 @@ const ChatRoom = () => {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={80}
       >
-        <Appbar.Header style={{ backgroundColor: green }}>
-          <Appbar.BackAction color={gold} onPress={() => router.back()} />
-          <Appbar.Content title="Chat" titleStyle={{ color: gold, fontWeight: 'bold', fontSize: 22 }} />
-        </Appbar.Header>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()}>
+            <Avatar.Icon size={36} icon="arrow-left" color={accent} style={{ backgroundColor: '#e3eafc' }} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Chat</Text>
+          <TouchableOpacity onPress={() => router.push('/profile')}>
+            {user?.profile?.photoURL ? (
+              <Avatar.Image size={36} source={{ uri: user.profile.photoURL }} />
+            ) : (
+              <Avatar.Icon size={36} icon="account-circle" color={accent} style={{ backgroundColor: '#e3eafc' }} />
+            )}
+          </TouchableOpacity>
+        </View>
         <View style={styles.container}>
           {loading ? (
-            <ActivityIndicator animating={true} color={green} size="large" style={{ marginTop: 40 }} />
+            <ActivityIndicator animating={true} color={accent} size="large" style={{ marginTop: 40 }} />
           ) : (
             <FlatList
               ref={flatListRef}
@@ -170,31 +184,29 @@ const ChatRoom = () => {
               onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             />
           )}
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.input}
-              value={text}
-              onChangeText={setText}
-              placeholder="Type a message..."
-              mode="outlined"
-              outlineColor={gold}
-              activeOutlineColor={green}
-              textColor={green}
-              theme={{ colors: { text: green, primary: gold, placeholder: gold } }}
-              disabled={sending}
-            />
-            <Button
-              mode="contained"
-              style={styles.sendButton}
-              contentStyle={{ backgroundColor: gold }}
-              labelStyle={{ color: green, fontWeight: 'bold', fontSize: 18 }}
-              onPress={sendMessage}
-              loading={sending}
-              disabled={sending || !text.trim()}
-            >
-              Send
-            </Button>
-          </View>
+        </View>
+        <View style={styles.inputRow}>
+          <TextInput
+            value={text}
+            onChangeText={setText}
+            placeholder="Type a message..."
+            style={styles.input}
+            mode="outlined"
+            outlineColor={accent}
+            activeOutlineColor={accent}
+            theme={{ colors: { text: textMain, primary: accent, placeholder: textSub } }}
+          />
+          <Button
+            mode="contained"
+            onPress={sendMessage}
+            loading={sending}
+            disabled={sending || !text.trim()}
+            style={styles.sendButton}
+            contentStyle={{ backgroundColor: accent }}
+            labelStyle={{ color: '#fff', fontWeight: 'bold' }}
+          >
+            Send
+          </Button>
         </View>
       </KeyboardAvoidingView>
     </PaperProvider>
@@ -202,89 +214,98 @@ const ChatRoom = () => {
 };
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 8,
+    backgroundColor: cardBg,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    elevation: 2,
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: accent,
+  },
   container: {
     flex: 1,
-    padding: 12,
+    paddingHorizontal: 8,
+    backgroundColor: bg,
   },
-  headerRow: {
-    alignItems: 'center',
-    marginVertical: 4,
-  },
-  headerText: {
-    color: gold,
+  dayHeader: {
+    alignSelf: 'center',
+    color: textSub,
     fontWeight: 'bold',
     fontSize: 15,
-    marginBottom: 2,
+    marginVertical: 8,
   },
   messageRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     marginBottom: 8,
+    paddingHorizontal: 8,
   },
-  myRow: {
+  messageRowMe: {
     justifyContent: 'flex-end',
   },
-  theirRow: {
+  messageRowOther: {
     justifyContent: 'flex-start',
   },
   avatar: {
     marginHorizontal: 4,
-    backgroundColor: gold,
+    backgroundColor: '#e3eafc',
   },
-  messageBubble: {
-    marginBottom: 4,
-    padding: 12,
+  messageCard: {
+    maxWidth: '75%',
     borderRadius: 16,
-    maxWidth: '80%',
-    alignSelf: 'flex-start',
-    backgroundColor: '#fff',
-    borderColor: gold,
-    borderWidth: 1.5,
     elevation: 2,
+    marginHorizontal: 4,
+    padding: 0,
   },
-  myMessage: {
+  messageMe: {
+    backgroundColor: accent,
     alignSelf: 'flex-end',
-    backgroundColor: '#e6ffe6',
-    borderColor: green,
   },
-  theirMessage: {
+  messageOther: {
+    backgroundColor: cardBg,
+    borderColor: accent,
+    borderWidth: 1,
     alignSelf: 'flex-start',
-    backgroundColor: '#fffbe6',
-    borderColor: gold,
-  },
-  sender: {
-    fontWeight: 'bold',
-    color: green,
-    marginBottom: 2,
   },
   messageText: {
+    color: textMain,
     fontSize: 16,
-    color: green,
+    marginBottom: 2,
   },
   timestamp: {
+    color: textSub,
     fontSize: 12,
-    color: gold,
     alignSelf: 'flex-end',
-    marginTop: 4,
+    marginTop: 2,
   },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 8,
+    padding: 8,
+    backgroundColor: cardBg,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
   },
   input: {
     flex: 1,
     marginRight: 8,
-    backgroundColor: '#fff',
-    borderRadius: 10,
+    backgroundColor: cardBg,
   },
   sendButton: {
     borderRadius: 10,
-    borderColor: gold,
-    borderWidth: 2,
-    backgroundColor: gold,
-    minWidth: 80,
+    backgroundColor: accent,
+    minWidth: 70,
+    height: 44,
+    justifyContent: 'center',
   },
 });
 
