@@ -7,7 +7,7 @@ import { collection, addDoc, setDoc, doc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import Toast from 'react-native-toast-message';
 import * as DocumentPicker from 'expo-document-picker';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadToCloudinary } from '../services/cloudinary';
 
 const green = '#217a3e';
 const gold = '#d4af37';
@@ -71,17 +71,11 @@ const JobseekerSignup = () => {
       if (cvFile) {
         setCvUploading(true);
         try {
-          const storage = getStorage();
-          const ext = cvFile.name.split('.').pop();
-          const storageRef = ref(storage, `cvs/${user.uid}.${ext}`);
-          const response = await fetch(cvFile.uri);
-          const blob = await response.blob();
-          await uploadBytes(storageRef, blob);
-          cvUrl = await getDownloadURL(storageRef);
+          cvUrl = await uploadToCloudinary(cvFile);
         } catch (err) {
           showToast('error', 'Failed to upload CV.');
           setCvUploading(false);
-          return;
+        return;
         }
         setCvUploading(false);
       }
@@ -142,7 +136,7 @@ const JobseekerSignup = () => {
               <Button mode="contained" onPress={handleSignup} loading={loading} style={styles.button} contentStyle={{ backgroundColor: gold }} labelStyle={{ color: green, fontWeight: 'bold', fontSize: 18 }}>Sign Up</Button>
             </Card.Content>
           </Card>
-        </ScrollView>
+    </ScrollView>
         {loading && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator animating={true} color={gold} size="large" />
