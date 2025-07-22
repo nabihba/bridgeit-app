@@ -31,7 +31,7 @@ export default function Courses() {
             <Card.Content>
               <Text style={styles.description}>{course.description}</Text>
               <View style={styles.progressContainer}>
-                <ProgressBar progress={course.progress} color="#1976d2" style={styles.progressBar} />
+                <ProgressBar progress={course.progress} color="#11523D" style={styles.progressBar} />
                 <Text style={styles.progressText}>{Math.round(course.progress * 100)}%</Text>
               </View>
             </Card.Content>
@@ -52,7 +52,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 24,
     textAlign: 'center',
-    color: '#1976d2',
+    color: '#11523D',
   },
   card: {
     marginBottom: 20,
@@ -78,7 +78,7 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 14,
-    color: '#1976d2',
+    color: '#BB9704',
     fontWeight: 'bold',
     minWidth: 60,
     textAlign: 'right',

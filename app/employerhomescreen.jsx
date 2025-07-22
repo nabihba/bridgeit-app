@@ -11,7 +11,7 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
 import Toast from 'react-native-toast-message';
 
-const accent = '#1976d2'; // blue accent
+const accent = '#11523D'; // blue accent
 const bg = '#f7f7f7';
 const cardBg = '#fff';
 const textMain = '#222';

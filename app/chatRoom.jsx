@@ -11,11 +11,11 @@ import isYesterday from 'dayjs/plugin/isYesterday';
 dayjs.extend(isToday);
 dayjs.extend(isYesterday);
 
-const accent = '#1976d2';
+const accent = '#11523dff';
 const bg = '#f7f7f7';
 const cardBg = '#fff';
-const textMain = '#222';
-const textSub = '#757575';
+const textMain = '#fff';
+const textSub = '#BB9704';
 
 function groupMessagesByDay(messages) {
   const groups = [];
