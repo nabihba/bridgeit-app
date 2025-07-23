@@ -15,7 +15,7 @@ const accent = '#11523dff';
 const bg = '#f7f7f7';
 const cardBg = '#fff';
 const textMain = '#fff';
-const textSub = '#BB9704';
+const textSub = '#e6debeff';
 
 function groupMessagesByDay(messages) {
   const groups = [];
@@ -271,8 +271,8 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-end',
   },
   messageOther: {
-    backgroundColor: cardBg,
-    borderColor: accent,
+    backgroundColor: '#BB9704',
+    borderColor: '#BB9704',
     borderWidth: 1,
     alignSelf: 'flex-start',
   },
