@@ -17,15 +17,7 @@ const Home = () => {
             <Image source={require('../assets/logo.png')} style={styles.logo} />
             <Text style={styles.title}>Welcome to BridgeIT</Text>
             <Text style={styles.subtitle}>Connecting job seekers and employers with opportunity</Text>
-            <Button
-              mode="contained"
-              style={styles.button}
-              contentStyle={{ backgroundColor: green }}
-              labelStyle={{ color: gold, fontWeight: 'bold', fontSize: 18 }}
-              onPress={() => router.push('/signup')}
-            >
-              Employer? Sign Up
-            </Button>
+            
             <Button
               mode="contained"
               style={styles.button}
